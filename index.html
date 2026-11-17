@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Feliz Natal <3</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      background: #07090e;
+      overflow: hidden;
+      user-select: none;
+      -webkit-user-select: none;
+      touch-action: none;
+    }
+    #ascii-canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: grab;
+    }
+    #ascii-canvas:active { cursor: grabbing; }
+    #footer-credit {
+      position: fixed;
+      bottom: 10px;
+      left: 0;
+      width: 100%;
+      text-align: center;
+      font-family: "JetBrains Mono", Consolas, monospace;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      color: rgba(148, 163, 184, 0.6);
+      pointer-events: none;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="ascii-canvas"></canvas>
+  <footer id="footer-credit">by Marcus Souza</footer>
+
+  <script>
+    (() => {
+      const canvas = document.getElementById("ascii-canvas");
+      const ctx = canvas.getContext("2d");
+
+      const MESSAGE = "QUE MEU PRESENTE SEJA VOCÊ";
+      const TAU = Math.PI * 2;
+      const ASCII_RAMP = ".:-=+*#%@";
+      const AUTO_SPIN = 0.62;
+
+      let particles = [];
+      let snowFlakes = [];
+      let elapsed = 0;
+      let angle = 0;
+      let speed = AUTO_SPIN;
+      let paused = false;
+      let lastTime = 0;
+
+      let isDragging = false;
+      let lastX = 0;
+      let lastMove = 0;
+      let lastTap = 0;
+
+      let cols = 0, rows = 0, cellW = 8, cellH = 13;
+      let zBuf = new Float32Array(0);
+      let cBuf = [], rBuf = new Uint8Array(0), gBuf = new Uint8Array(0), bBuf = new Uint8Array(0);
+
+      const rand = (a, b) => a + Math.random() * (b - a);
+
+      function envelope(y) {
+        const t = Math.max(0, Math.min(1, (0.85 - y) / 0.73));
+        return 0.44 * Math.pow(t, 1.03) * (1 + 0.11 * Math.sin(t * Math.PI * 15));
+      }
+
+      function addPt(x, y, z, r, g, b, spawn, type = "normal", phase = 0) {
+        particles.push({ x, y, z, r, g, b, spawn, type, phase });
+      }
+
+      function buildScene() {
+        particles = [];
+        const tips = [];
+
+        // 1. Ramos e agulhas triangulares
+        for (let i = 0; i < 18; i++) {
+          const tw = i / 17;
+          const y0 = 0.845 - tw * 0.725;
+          const spawnBase = tw * 3.4;
+          const nb = Math.max(4, Math.floor(4 + 16 * tw));
+
+          for (let b = 0; b < nb; b++) {
+            const ang = (TAU * b) / nb + i * 0.77 + rand(-0.07, 0.07);
+            const len = envelope(y0) * rand(0.9, 1.04);
+            const steps = Math.max(6, Math.floor(10 + len * 38));
+            const dx = Math.cos(ang), dz = Math.sin(ang);
+            const px0 = -dz, pz0 = dx;
+
+            for (let s = 0; s < steps; s++) {
+              const u = s / steps;
+              const dist = u * len;
+              const droop = -0.048 * u * u * (0.25 + 0.75 * tw);
+              const spread = (0.006 + 0.036 * u) * (0.35 + 0.65 * tw);
+
+              for (let k = 0; k < 3; k++) {
+                const op = rand(-spread, spread);
+                const oy = rand(-spread * 0.6, spread * 0.6);
+                const px = dx * dist + px0 * op;
+                const pz = dz * dist + pz0 * op;
+                const py = y0 + droop + oy;
+
+                if (oy > spread * 0.2 && u > 0.35 && Math.random() < 0.42) {
+                  addPt(px, py, pz, 215, 232, 248, spawnBase + u * 0.35, "snow");
+                } else {
+                  const sh = 0.75 + 0.45 * u;
+                  addPt(px, py, pz, 24 * sh, (118 + rand(-18, 25)) * sh, 46 * sh, spawnBase + u * 0.35, "needle");
+                }
+              }
+            }
+            if (len > 0.03) tips.push({ x: dx * len, y: y0 - 0.048 * (0.25 + 0.75 * tw), z: dz * len });
+          }
+        }
+
+        // 2. Núcleo interno escuro
+        for (let i = 0; i < 2200; i++) {
+          const y = rand(0.12, 0.83);
+          const r = envelope(y) * 0.62 * Math.sqrt(Math.random());
+          const a = rand(0, TAU);
+          addPt(r * Math.cos(a), y, r * Math.sin(a), 12, 42, 20, 3.4 + (1 - y) * 0.8, "core");
+        }
+
+        // 3. Tronco
+        for (let i = 0; i < 1000; i++) {
+          const y = rand(0, 0.13), a = rand(0, TAU), r = 0.052 * rand(0.85, 1.05);
+          const gr = 0.85 + 0.25 * Math.sin(a * 8 + y * 40);
+          addPt(r * Math.cos(a), y, r * Math.sin(a), 118 * gr, 72 * gr, 42 * gr, 4.2 + (0.13 - y) * 5, "trunk");
+        }
+
+        // 4. Grinalda dourada em espiral
+        for (let i = 0; i < 1400; i++) {
+          const u = i / 1400;
+          const a = u * 3.4 * TAU;
+          const y = 0.14 + u * 0.69 - 0.014 * Math.abs(Math.sin(u * Math.PI * 10));
+          const r = envelope(y) * 1.02;
+          for (let j = 0; j < 2; j++) {
+            addPt((r + rand(-0.007, 0.007)) * Math.cos(a), y + rand(-0.007, 0.007), (r + rand(-0.007, 0.007)) * Math.sin(a), 255, 208, 70, 5.0 + u * 1.15, "garland");
+          }
+        }
+
+        // 5. Bolas decorativas
+        const bCols = [[235, 52, 68], [255, 205, 65], [225, 232, 240]];
+        for (let k = 0; k < 44; k++) {
+          const y = rand(0.15, 0.77), a = rand(0, TAU), r = envelope(y) * 0.96;
+          const cx = r * Math.cos(a), cz = r * Math.sin(a), col = bCols[k % 3];
+          for (let p = 0; p < 20; p++) {
+            const u = rand(-1, 1), phi = rand(0, TAU), sr = 0.017 * Math.sqrt(Math.max(0, 1 - u * u));
+            addPt(cx + sr * Math.cos(phi), y + 0.017 * u, cz + sr * Math.sin(phi), col[0], col[1], col[2], 6.2 + (k / 44) * 0.95, "bauble");
+          }
+        }
+
+        // 6. Luzes pisca-pisca
+        const lCols = [[255, 115, 175], [255, 242, 165], [125, 225, 255]];
+        tips.forEach((tip, idx) => {
+          if (idx % 2 === 0) {
+            const c = lCols[idx % 3], sp = 7.2 + Math.random() * 0.95, ph = rand(0, TAU);
+            addPt(tip.x, tip.y, tip.z, c[0], c[1], c[2], sp, "light", ph);
+            addPt(tip.x + 0.005, tip.y, tip.z, c[0], c[1], c[2], sp, "light", ph);
+          }
+        });
+
+        // 7. Presentes na base
+        const gifts = [
+          { x:  0.19, z:  0.14, w: 0.13, h: 0.11, d: 0.13, rot:  0.25, box: [215, 42, 55],  rib: [255, 210, 70] },
+          { x: -0.19, z:  0.13, w: 0.12, h: 0.10, d: 0.12, rot: -0.35, box: [35, 155, 75],  rib: [235, 55, 65]  },
+          { x:  0.02, z: -0.22, w: 0.14, h: 0.10, d: 0.12, rot:  0.12, box: [45, 105, 215], rib: [255, 210, 70] },
+          { x: -0.15, z: -0.16, w: 0.10, h: 0.08, d: 0.10, rot:  0.48, box: [235, 185, 45], rib: [215, 42, 55]  },
+          { x:  0.17, z: -0.15, w: 0.10, h: 0.09, d: 0.10, rot: -0.22, box: [155, 45, 95],  rib: [230, 235, 245]}
+        ];
+        gifts.forEach((g, idx) => {
+          const sp = 8.2 + idx * 0.25, cr = Math.cos(g.rot), sr = Math.sin(g.rot);
+          for (let i = 0; i < 400; i++) {
+            const f = i % 5;
+            let lx = rand(-g.w / 2, g.w / 2), ly = rand(0, g.h), lz = rand(-g.d / 2, g.d / 2);
+            if (f === 0) ly = g.h; else if (f === 1) lx = g.w / 2; else if (f === 2) lx = -g.w / 2; else if (f === 3) lz = g.d / 2; else lz = -g.d / 2;
+            const c = (Math.abs(lx) < 0.014 || Math.abs(lz) < 0.014) ? g.rib : g.box;
+            addPt(g.x + lx * cr - lz * sr, ly, g.z + lx * sr + lz * cr, c[0], c[1], c[2], sp, "gift");
+          }
+        });
+
+        // 8. Estrela no topo
+        for (let i = 0; i < 420; i++) {
+          const p = i % 10;
+          const a1 = (p * Math.PI) / 5 - Math.PI / 2, a2 = ((p + 1) * Math.PI) / 5 - Math.PI / 2;
+          const r1 = p % 2 === 0 ? 0.068 : 0.028, r2 = (p + 1) % 2 === 0 ? 0.068 : 0.028;
+          const u = Math.random(), v = Math.random() * (1 - u);
+          addPt(u * r1 * Math.cos(a1) + v * r2 * Math.cos(a2), 0.885 - (u * r1 * Math.sin(a1) + v * r2 * Math.sin(a2)), rand(-0.014, 0.014), 255, 218, 55, 9.6, "star");
+        }
+      }
+
+      function initSnow() {
+        snowFlakes = Array.from({ length: 160 }, () => ({
+          x: Math.random(), y: Math.random(),
+          vy: rand(0.03, 0.11), vx: rand(-0.015, 0.015),
+          ch: [".", "·", "*", "+"][Math.floor(Math.random() * 4)],
+          a: rand(0.25, 0.8)
+        }));
+      }
+
+      function restart() {
+        elapsed = 0; angle = 0; speed = AUTO_SPIN; paused = false;
+        buildScene();
+      }
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const w = window.innerWidth, h = window.innerHeight;
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        cellH = w < 600 ? 11 : 13;
+        cellW = Math.round(cellH * 0.62);
+        cols = Math.max(40, Math.floor(w / cellW));
+        rows = Math.max(24, Math.floor(h / cellH));
+
+        const n = cols * rows;
+        zBuf = new Float32Array(n);
+        cBuf = new Array(n);
+        rBuf = new Uint8Array(n);
+        gBuf = new Uint8Array(n);
+        bBuf = new Uint8Array(n);
+      }
+
+      function put(c, r, z, ch, red, grn, blu) {
+        if (c < 0 || c >= cols || r < 0 || r >= rows) return;
+        const idx = r * cols + c;
+        if (z > zBuf[idx]) {
+          zBuf[idx] = z; cBuf[idx] = ch;
+          rBuf[idx] = red; gBuf[idx] = grn; bBuf[idx] = blu;
+        }
+      }
+
+      function render(now) {
+        if (!lastTime) lastTime = now;
+        const dt = Math.min(0.05, Math.max(0, (now - lastTime) / 1000));
+        lastTime = now;
+
+        if (!paused) {
+          elapsed += dt;
+          if (!isDragging) {
+            angle = (angle + speed * dt + TAU) % TAU;
+            speed += (AUTO_SPIN - speed) * (1 - Math.exp(-3.0 * dt));
+          }
+        }
+
+        zBuf.fill(-Infinity);
+        cBuf.fill(null);
+        ctx.fillStyle = "#07090e";
+        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+
+        ctx.font = `${cellH - 1}px "JetBrains Mono", Consolas, monospace`;
+        ctx.textBaseline = "top";
+        for (const f of snowFlakes) {
+          if (!paused) {
+            f.y = (f.y + f.vy * dt) % 1;
+            f.x = (f.x + f.vx * dt + 1) % 1;
+          }
+          ctx.fillStyle = `rgba(180,205,235,${f.a.toFixed(2)})`;
+          ctx.fillText(f.ch, Math.floor(f.x * cols) * cellW, Math.floor(f.y * rows) * cellH);
+        }
+
+        const cosA = Math.cos(angle), sinA = Math.sin(angle);
+        const scale = rows * 0.74, aspect = cellH / cellW;
+
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          if (elapsed < p.spawn) continue;
+          const age = elapsed - p.spawn;
+          const pop = age < 0.22 ? 0.5 + 0.5 * (age / 0.22) : 1.0;
+
+          const rx = (p.x * cosA - p.z * sinA) * pop;
+          const rz = (p.x * sinA + p.z * cosA) * pop;
+          const depth = 2.25 - rz;
+          if (depth <= 0.2) continue;
+
+          const persp = 2.35 / depth;
+          const sx = Math.round(cols * 0.5 + rx * persp * scale * aspect * 0.56);
+          const sy = Math.round(rows * 0.83 - p.y * persp * scale);
+
+          const sh = Math.max(0.32, Math.min(1.18, 0.55 + 0.65 * (rz + 0.45)));
+          let r = p.r * sh, g = p.g * sh, b = p.b * sh;
+          let ch = ASCII_RAMP[Math.min(8, Math.floor(sh * 6.5))];
+
+          if (p.type === "snow") ch = rz > 0 ? "*" : "+";
+          else if (p.type === "garland") ch = rz > 0 ? "@" : "~";
+          else if (p.type === "bauble") ch = rz > 0 ? "O" : "o";
+          else if (p.type === "light") {
+            const pulse = 0.45 + 0.55 * Math.sin(elapsed * 5.2 + p.phase);
+            r = p.r * (0.4 + 0.75 * pulse); g = p.g * (0.4 + 0.75 * pulse); b = p.b * (0.4 + 0.75 * pulse);
+            ch = pulse > 0.75 ? "@" : "*";
+          } else if (p.type === "star") {
+            const fl = Math.max(0, 1 - age * 1.4);
+            r = Math.min(255, p.r + 255 * fl); g = Math.min(255, p.g + 255 * fl); b = Math.min(255, p.b + 255 * fl);
+            ch = fl > 0.2 ? "@" : "*";
+          }
+          put(sx, sy, rz, ch, r, g, b);
+        }
+
+        if (elapsed >= 10.6) {
+          const shown = Math.min(MESSAGE.length, Math.floor((elapsed - 10.6) * 14));
+          const mRow = Math.min(rows - 3, Math.round(rows * 0.89));
+          const sCol = Math.floor((cols - MESSAGE.length) / 2);
+          const mCols = [[235, 64, 75], [255, 210, 70], [68, 195, 95]];
+          for (let i = 0; i < shown; i++) {
+            if (MESSAGE[i] === " ") continue;
+            const c = mCols[i % 3];
+            put(sCol + i, mRow, 10, MESSAGE[i], c[0], c[1], c[2]);
+          }
+        }
+
+        ctx.font = `bold ${cellH - 1}px "JetBrains Mono", Consolas, monospace`;
+        for (let r = 0; r < rows; r++) {
+          const off = r * cols, y = r * cellH;
+          for (let c = 0; c < cols; c++) {
+            const idx = off + c;
+            if (cBuf[idx]) {
+              ctx.fillStyle = `rgb(${rBuf[idx]},${gBuf[idx]},${bBuf[idx]})`;
+              ctx.fillText(cBuf[idx], c * cellW, y);
+            }
+          }
+        }
+        requestAnimationFrame(render);
+      }
+
+      canvas.addEventListener("pointerdown", (e) => {
+        const now = performance.now();
+        if (now - lastTap < 280) restart();
+        lastTap = now;
+        isDragging = true; lastX = e.clientX; lastMove = now; speed = 0;
+        canvas.setPointerCapture(e.pointerId);
+      });
+
+      canvas.addEventListener("pointermove", (e) => {
+        if (!isDragging) return;
+        const now = performance.now();
+        const dx = e.clientX - lastX;
+        const mdt = Math.max(0.005, (now - lastMove) / 1000);
+        lastX = e.clientX; lastMove = now;
+        const da = (dx / Math.max(280, window.innerWidth)) * TAU * 1.4;
+        angle = (angle + da + TAU) % TAU;
+        speed = Math.max(-12, Math.min(12, da / mdt));
+      });
+
+      const endDrag = (e) => {
+        if (!isDragging) return;
+        isDragging = false;
+        if (canvas.hasPointerCapture(e.pointerId)) canvas.releasePointerCapture(e.pointerId);
+      };
+      canvas.addEventListener("pointerup", endDrag);
+      canvas.addEventListener("pointercancel", endDrag);
+
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") { e.preventDefault(); paused = !paused; }
+        else if (e.key === "r" || e.key === "R") restart();
+      });
+      window.addEventListener("resize", resize);
+
+      resize();
+      initSnow();
+      buildScene();
+      requestAnimationFrame(render);
+    })();
+  </script>
+</body>
+</html>
