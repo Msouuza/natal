@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Feliz Natal <3</title>
+  <title>FELIZ NATAL</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -254,10 +254,13 @@
           }
         }
 
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+
         zBuf.fill(-Infinity);
         cBuf.fill(null);
         ctx.fillStyle = "#07090e";
-        ctx.fillRect(0, 0, window.innerWidth, window.innerHeight);
+        ctx.fillRect(0, 0, w, h);
 
         ctx.font = `${cellH - 1}px "JetBrains Mono", Consolas, monospace`;
         ctx.textBaseline = "top";
@@ -271,7 +274,7 @@
         }
 
         const cosA = Math.cos(angle), sinA = Math.sin(angle);
-        const scale = rows * 0.74, aspect = cellH / cellW;
+        const scale = rows * 0.72, aspect = cellH / cellW;
 
         for (let i = 0; i < particles.length; i++) {
           const p = particles[i];
@@ -286,7 +289,7 @@
 
           const persp = 2.35 / depth;
           const sx = Math.round(cols * 0.5 + rx * persp * scale * aspect * 0.56);
-          const sy = Math.round(rows * 0.83 - p.y * persp * scale);
+          const sy = Math.round(rows * 0.80 - p.y * persp * scale);
 
           const sh = Math.max(0.32, Math.min(1.18, 0.55 + 0.65 * (rz + 0.45)));
           let r = p.r * sh, g = p.g * sh, b = p.b * sh;
@@ -307,18 +310,6 @@
           put(sx, sy, rz, ch, r, g, b);
         }
 
-        if (elapsed >= 10.6) {
-          const shown = Math.min(MESSAGE.length, Math.floor((elapsed - 10.6) * 14));
-          const mRow = Math.min(rows - 3, Math.round(rows * 0.89));
-          const sCol = Math.floor((cols - MESSAGE.length) / 2);
-          const mCols = [[235, 64, 75], [255, 210, 70], [68, 195, 95]];
-          for (let i = 0; i < shown; i++) {
-            if (MESSAGE[i] === " ") continue;
-            const c = mCols[i % 3];
-            put(sCol + i, mRow, 10, MESSAGE[i], c[0], c[1], c[2]);
-          }
-        }
-
         ctx.font = `bold ${cellH - 1}px "JetBrains Mono", Consolas, monospace`;
         for (let r = 0; r < rows; r++) {
           const off = r * cols, y = r * cellH;
@@ -330,6 +321,40 @@
             }
           }
         }
+
+        // Frase principal em tamanho maior e bem visível
+        if (elapsed >= 10.6) {
+          const shown = Math.min(MESSAGE.length, Math.floor((elapsed - 10.6) * 14));
+          let fontSize = Math.min(34, Math.max(21, Math.floor(w * 0.03)));
+          ctx.font = `bold ${fontSize}px "JetBrains Mono", Consolas, monospace`;
+
+          const fullWidth = ctx.measureText(MESSAGE).width;
+          if (fullWidth > w * 0.9) {
+            fontSize = Math.max(15, Math.floor(fontSize * ((w * 0.9) / fullWidth)));
+            ctx.font = `bold ${fontSize}px "JetBrains Mono", Consolas, monospace`;
+          }
+
+          const finalWidth = ctx.measureText(MESSAGE).width;
+          let cursorX = (w - finalWidth) / 2;
+          const textY = Math.min(h - fontSize - 32, h * 0.875);
+          const mCols = ["#eb404b", "#ffd246", "#44c35f"];
+
+          ctx.textBaseline = "top";
+          for (let i = 0; i < MESSAGE.length; i++) {
+            const ch = MESSAGE[i];
+            const charW = ctx.measureText(ch).width;
+            if (i < shown && ch !== " ") {
+              const col = mCols[i % 3];
+              ctx.fillStyle = col;
+              ctx.shadowColor = col;
+              ctx.shadowBlur = 10;
+              ctx.fillText(ch, cursorX, textY);
+            }
+            cursorX += charW;
+          }
+          ctx.shadowBlur = 0;
+        }
+
         requestAnimationFrame(render);
       }
 
